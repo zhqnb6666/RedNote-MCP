@@ -44,12 +44,11 @@ export class AuthManager {
   }
 
   async getBrowser(): Promise<Browser> {
-    if (!this.browser) {
-      logger.info('Launching browser');
-      this.browser = await chromium.launch({
-        headless: false,
-      });
-    }
+    logger.info('Launching browser');
+    // 始终创建新的浏览器实例，不复用之前的
+    this.browser = await chromium.launch({
+      headless: false,
+    });
     return this.browser;
   }
 

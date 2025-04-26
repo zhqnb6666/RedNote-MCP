@@ -12,8 +12,6 @@ import { createStdioLogger } from './utils/stdioLogger'
 
 const execAsync = promisify(exec)
 
-const tools = new RedNoteTools()
-
 const name = 'rednote'
 const description =
   'A friendly tool to help you access and interact with Xiaohongshu (RedNote) content through Model Context Protocol.'
@@ -44,6 +42,7 @@ server.tool(
   async ({ keywords, limit = 10 }: { keywords: string; limit?: number }) => {
     logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}`)
     try {
+      const tools = new RedNoteTools()
       const notes = await tools.searchNotes(keywords, limit)
       logger.info(`Found ${notes.length} notes`)
       return {
@@ -68,6 +67,7 @@ server.tool(
   async ({ url }: { url: string }) => {
     logger.info(`Getting note content for URL: ${url}`)
     try {
+      const tools = new RedNoteTools()
       const note = await tools.getNoteContent(url)
       logger.info(`Successfully retrieved note: ${note.title}`)
 
@@ -95,6 +95,7 @@ server.tool(
   async ({ url }: { url: string }) => {
     logger.info(`Getting comments for URL: ${url}`)
     try {
+      const tools = new RedNoteTools()
       const comments = await tools.getNoteComments(url)
       logger.info(`Found ${comments.length} comments`)
       return {
