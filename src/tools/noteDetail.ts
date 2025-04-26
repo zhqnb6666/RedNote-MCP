@@ -15,11 +15,15 @@ export interface NoteDetail {
   comments?: number
 }
 
-export async function GetNoteDetail(page: Page): Promise<NoteDetail> {
+export async function GetNoteDetail(page: Page, timeout: number = 30000): Promise<NoteDetail> {
   // Wait for content to load
   logger.info('Waiting for content to load')
-  await page.waitForSelector('.note-container')
-  await page.waitForSelector('.media-container')
+  try {
+    await page.waitForSelector('.note-container', { timeout })
+    await page.waitForSelector('.media-container', { timeout })
+  } catch (error) {
+    throw new Error(`笔记内容加载超时 (${timeout}ms)`)
+  }
 
   async function getContent() {
     function ChineseUnitStrToNumber(str: string) {

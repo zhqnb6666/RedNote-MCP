@@ -12,7 +12,34 @@ import { createStdioLogger } from './utils/stdioLogger'
 
 const execAsync = promisify(exec)
 
-const tools = new RedNoteTools()
+// 默认参数配置
+const DEFAULT_TIMEOUT = 30000 // 默认超时时间30秒
+
+// 尝试从环境变量或命令行获取超时配置
+const getConfiguredTimeout = () => {
+  // 优先从环境变量读取
+  if (process.env.REDNOTE_TIMEOUT) {
+    const envTimeout = parseInt(process.env.REDNOTE_TIMEOUT, 10)
+    if (!isNaN(envTimeout) && envTimeout > 0) {
+      return envTimeout
+    }
+  }
+  
+  // 从命令行参数读取
+  const timeoutArg = process.argv.find(arg => arg.startsWith('--timeout='))
+  if (timeoutArg) {
+    const timeoutValue = parseInt(timeoutArg.split('=')[1], 10)
+    if (!isNaN(timeoutValue) && timeoutValue > 0) {
+      return timeoutValue
+    }
+  }
+  
+  return DEFAULT_TIMEOUT
+}
+
+const timeout = getConfiguredTimeout()
+logger.info(`Using timeout: ${timeout}ms`)
+const tools = new RedNoteTools(timeout)
 
 const name = 'rednote'
 const description =
@@ -39,12 +66,13 @@ server.tool(
   '根据关键词搜索笔记',
   {
     keywords: z.string().describe('搜索关键词'),
-    limit: z.number().optional().describe('返回结果数量限制')
+    limit: z.number().optional().describe('返回结果数量限制'), 
+    timeout: z.number().optional().describe('操作超时时间（毫秒）')
   },
-  async ({ keywords, limit = 10 }: { keywords: string; limit?: number }) => {
-    logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}`)
+  async ({ keywords, limit = 10, timeout }: { keywords: string; limit?: number; timeout?: number }) => {
+    logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}, timeout: ${timeout || 'default'}ms`)
     try {
-      const notes = await tools.searchNotes(keywords, limit)
+      const notes = await tools.searchNotes(keywords, limit, timeout)
       logger.info(`Found ${notes.length} notes`)
       return {
         content: notes.map((note) => ({
@@ -63,12 +91,13 @@ server.tool(
   'get_note_content',
   '获取笔记内容',
   {
-    url: z.string().describe('笔记 URL')
+    url: z.string().describe('笔记 URL'),
+    timeout: z.number().optional().describe('操作超时时间（毫秒）')
   },
-  async ({ url }: { url: string }) => {
-    logger.info(`Getting note content for URL: ${url}`)
+  async ({ url, timeout }: { url: string; timeout?: number }) => {
+    logger.info(`Getting note content for URL: ${url}, timeout: ${timeout || 'default'}ms`)
     try {
-      const note = await tools.getNoteContent(url)
+      const note = await tools.getNoteContent(url, timeout)
       logger.info(`Successfully retrieved note: ${note.title}`)
 
       return {
@@ -90,12 +119,13 @@ server.tool(
   'get_note_comments',
   '获取笔记评论',
   {
-    url: z.string().describe('笔记 URL')
+    url: z.string().describe('笔记 URL'),
+    timeout: z.number().optional().describe('操作超时时间（毫秒）')
   },
-  async ({ url }: { url: string }) => {
-    logger.info(`Getting comments for URL: ${url}`)
+  async ({ url, timeout }: { url: string; timeout?: number }) => {
+    logger.info(`Getting comments for URL: ${url}, timeout: ${timeout || 'default'}ms`)
     try {
-      const comments = await tools.getNoteComments(url)
+      const comments = await tools.getNoteComments(url, timeout)
       logger.info(`Found ${comments.length} comments`)
       return {
         content: comments.map((comment) => ({
@@ -161,6 +191,9 @@ if (process.argv.includes('--stdio')) {
   const program = new Command()
 
   program.name(name).description(description).version(version)
+  
+  // 全局选项 - 超时设置
+  program.option('--timeout <ms>', '设置操作超时时间（毫秒）', DEFAULT_TIMEOUT.toString())
 
   program
     .command('init')

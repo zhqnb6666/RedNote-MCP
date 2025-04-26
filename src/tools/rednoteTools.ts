@@ -25,10 +25,15 @@ export class RedNoteTools {
   private authManager: AuthManager
   private browser: Browser | null = null
   private page: Page | null = null
+  private timeout: number = 30000 // 默认超时时间为30秒
 
-  constructor() {
+  constructor(timeout?: number) {
     logger.info('Initializing RedNoteTools')
     this.authManager = new AuthManager()
+    if (timeout) {
+      this.timeout = timeout
+      logger.info(`Custom timeout set: ${timeout}ms`)
+    }
   }
 
   async initialize(): Promise<void> {
@@ -90,8 +95,9 @@ export class RedNoteTools {
     return shareText
   }
 
-  async searchNotes(keywords: string, limit: number = 10): Promise<Note[]> {
-    logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}`)
+  async searchNotes(keywords: string, limit: number = 10, timeout?: number): Promise<Note[]> {
+    const operationTimeout = timeout || this.timeout
+    logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}, timeout: ${operationTimeout}ms`)
     await this.initialize()
     if (!this.page) throw new Error('Page not initialized')
 
@@ -102,9 +108,13 @@ export class RedNoteTools {
 
       // Wait for search results to load
       logger.info('Waiting for search results')
-      await this.page.waitForSelector('.feeds-container', {
-        timeout: 30000
-      })
+      try {
+        await this.page.waitForSelector('.feeds-container', {
+          timeout: operationTimeout
+        })
+      } catch (error) {
+        throw new Error(`搜索结果加载超时 (${operationTimeout}ms)`)
+      }
 
       // Get all note items
       let noteItems = await this.page.$$('.feeds-container .note-item')
@@ -211,15 +221,21 @@ export class RedNoteTools {
     }
   }
 
-  async getNoteContent(url: string): Promise<NoteDetail> {
-    logger.info(`Getting note content for URL: ${url}`)
+  async getNoteContent(url: string, timeout?: number): Promise<NoteDetail> {
+    const operationTimeout = timeout || this.timeout
+    logger.info(`Getting note content for URL: ${url}, timeout: ${operationTimeout}ms`)
     await this.initialize()
     if (!this.page) throw new Error('Page not initialized')
 
     try {
       const actualURL = this.extractRedBookUrl(url)
-      await this.page.goto(url)
-      let note = await GetNoteDetail(this.page)
+      try {
+        await this.page.goto(url, { timeout: operationTimeout })
+      } catch (error) {
+        throw new Error(`打开笔记页面超时 (${operationTimeout}ms)`)
+      }
+      
+      let note = await GetNoteDetail(this.page, operationTimeout)
       note.url = url
       logger.info(`Successfully extracted note: ${note.title}`)
       return note
@@ -231,17 +247,28 @@ export class RedNoteTools {
     }
   }
 
-  async getNoteComments(url: string): Promise<Comment[]> {
-    logger.info(`Getting comments for URL: ${url}`)
+  async getNoteComments(url: string, timeout?: number): Promise<Comment[]> {
+    const operationTimeout = timeout || this.timeout
+    logger.info(`Getting comments for URL: ${url}, timeout: ${operationTimeout}ms`)
     await this.initialize()
     if (!this.page) throw new Error('Page not initialized')
 
     try {
-      await this.page.goto(url)
+      try {
+        await this.page.goto(url, { timeout: operationTimeout })
+      } catch (error) {
+        throw new Error(`打开评论页面超时 (${operationTimeout}ms)`)
+      }
 
       // Wait for comments to load
       logger.info('Waiting for comments to load')
-      await this.page.waitForSelector('[role="dialog"] [role="list"]')
+      try {
+        await this.page.waitForSelector('[role="dialog"] [role="list"]', {
+          timeout: operationTimeout
+        })
+      } catch (error) {
+        throw new Error(`评论加载超时 (${operationTimeout}ms)`)
+      }
 
       // Extract comments
       const comments = await this.page.evaluate(() => {
