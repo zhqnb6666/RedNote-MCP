@@ -36,8 +36,9 @@ export class RedNoteTools {
     }
   }
 
-  async initialize(): Promise<void> {
-    logger.info('Initializing browser and page')
+  async initialize(timeout?: number): Promise<void> {
+    const operationTimeout = timeout || this.timeout
+    logger.info(`Initializing browser and page with timeout: ${operationTimeout}ms`)
     if (!this.browser) {
       this.browser = await this.authManager.getBrowser()
       this.page = await this.browser.newPage()
@@ -51,18 +52,30 @@ export class RedNoteTools {
 
       // Check login status
       logger.info('Checking login status')
-      await this.page.goto('https://www.xiaohongshu.com')
-      const isLoggedIn = await this.page.evaluate(() => {
-        const sidebarUser = document.querySelector('.user.side-bar-component .channel')
-        return sidebarUser?.textContent?.trim() === '我'
-      })
-
-      // If not logged in, perform login
-      if (!isLoggedIn) {
-        logger.error('Not logged in, please login first')
-        throw new Error('Not logged in')
+      try {
+        await this.page.goto('https://www.xiaohongshu.com', { timeout: operationTimeout })
+      } catch (error) {
+        throw new Error(`初始化访问主页超时 (${operationTimeout}ms)`)
       }
-      logger.info('Login status verified')
+      
+      try {
+        const isLoggedIn = await this.page.evaluate(() => {
+          const sidebarUser = document.querySelector('.user.side-bar-component .channel')
+          return sidebarUser?.textContent?.trim() === '我'
+        })
+
+        // If not logged in, perform login
+        if (!isLoggedIn) {
+          logger.error('Not logged in, please login first')
+          throw new Error('Not logged in')
+        }
+        logger.info('Login status verified')
+      } catch (error: any) {
+        if (error.message === 'Not logged in') {
+          throw error
+        }
+        throw new Error(`验证登录状态超时 (${operationTimeout}ms)`)
+      }
     }
   }
 
@@ -98,13 +111,19 @@ export class RedNoteTools {
   async searchNotes(keywords: string, limit: number = 10, timeout?: number): Promise<Note[]> {
     const operationTimeout = timeout || this.timeout
     logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}, timeout: ${operationTimeout}ms`)
-    await this.initialize()
+    await this.initialize(operationTimeout)
     if (!this.page) throw new Error('Page not initialized')
 
     try {
       // Navigate to search page
       logger.info('Navigating to search page')
-      await this.page.goto(`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keywords)}`)
+      try {
+        await this.page.goto(`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keywords)}`, {
+          timeout: operationTimeout
+        })
+      } catch (error) {
+        throw new Error(`导航到搜索页面超时 (${operationTimeout}ms)`)
+      }
 
       // Wait for search results to load
       logger.info('Waiting for search results')
@@ -224,13 +243,13 @@ export class RedNoteTools {
   async getNoteContent(url: string, timeout?: number): Promise<NoteDetail> {
     const operationTimeout = timeout || this.timeout
     logger.info(`Getting note content for URL: ${url}, timeout: ${operationTimeout}ms`)
-    await this.initialize()
+    await this.initialize(operationTimeout)
     if (!this.page) throw new Error('Page not initialized')
 
     try {
       const actualURL = this.extractRedBookUrl(url)
       try {
-        await this.page.goto(url, { timeout: operationTimeout })
+        await this.page.goto(actualURL, { timeout: operationTimeout })
       } catch (error) {
         throw new Error(`打开笔记页面超时 (${operationTimeout}ms)`)
       }
@@ -250,7 +269,7 @@ export class RedNoteTools {
   async getNoteComments(url: string, timeout?: number): Promise<Comment[]> {
     const operationTimeout = timeout || this.timeout
     logger.info(`Getting comments for URL: ${url}, timeout: ${operationTimeout}ms`)
-    await this.initialize()
+    await this.initialize(operationTimeout)
     if (!this.page) throw new Error('Page not initialized')
 
     try {
