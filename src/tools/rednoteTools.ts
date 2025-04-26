@@ -33,14 +33,10 @@ export class RedNoteTools {
 
   async initialize(): Promise<void> {
     logger.info('Initializing browser and page')
-    this.browser = await this.authManager.getBrowser()
     if (!this.browser) {
-      throw new Error('Failed to initialize browser')
-    }
-    
-    try {
+      this.browser = await this.authManager.getBrowser()
       this.page = await this.browser.newPage()
-      
+
       // Load cookies if available
       const cookies = await this.authManager.getCookies()
       if (cookies.length > 0) {
@@ -62,30 +58,15 @@ export class RedNoteTools {
         throw new Error('Not logged in')
       }
       logger.info('Login status verified')
-    } catch (error) {
-      // 初始化过程中出错，确保清理资源
-      await this.cleanup()
-      throw error
     }
   }
 
   async cleanup(): Promise<void> {
     logger.info('Cleaning up browser resources')
-    try {
-      if (this.page) {
-        await this.page.close().catch(err => logger.error('Error closing page:', err))
-        this.page = null
-      }
-      
-      if (this.browser) {
-        await this.browser.close().catch(err => logger.error('Error closing browser:', err))
-        this.browser = null
-      }
-    } catch (error) {
-      logger.error('Error during cleanup:', error)
-    } finally {
-      this.page = null
+    if (this.browser) {
+      await this.browser.close()
       this.browser = null
+      this.page = null
     }
   }
 
@@ -111,10 +92,10 @@ export class RedNoteTools {
 
   async searchNotes(keywords: string, limit: number = 10): Promise<Note[]> {
     logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}`)
-    try {
-      await this.initialize()
-      if (!this.page) throw new Error('Page not initialized')
+    await this.initialize()
+    if (!this.page) throw new Error('Page not initialized')
 
+    try {
       // Navigate to search page
       logger.info('Navigating to search page')
       await this.page.goto(`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keywords)}`)
@@ -225,9 +206,6 @@ export class RedNoteTools {
 
       logger.info(`Successfully processed ${notes.length} notes`)
       return notes
-    } catch (error) {
-      logger.error('Error searching notes:', error)
-      throw error
     } finally {
       await this.cleanup()
     }
@@ -235,12 +213,12 @@ export class RedNoteTools {
 
   async getNoteContent(url: string): Promise<NoteDetail> {
     logger.info(`Getting note content for URL: ${url}`)
-    try {
-      await this.initialize()
-      if (!this.page) throw new Error('Page not initialized')
+    await this.initialize()
+    if (!this.page) throw new Error('Page not initialized')
 
+    try {
       const actualURL = this.extractRedBookUrl(url)
-      await this.page.goto(actualURL)
+      await this.page.goto(url)
       let note = await GetNoteDetail(this.page)
       note.url = url
       logger.info(`Successfully extracted note: ${note.title}`)
@@ -255,10 +233,10 @@ export class RedNoteTools {
 
   async getNoteComments(url: string): Promise<Comment[]> {
     logger.info(`Getting comments for URL: ${url}`)
-    try {
-      await this.initialize()
-      if (!this.page) throw new Error('Page not initialized')
+    await this.initialize()
+    if (!this.page) throw new Error('Page not initialized')
 
+    try {
       await this.page.goto(url)
 
       // Wait for comments to load
