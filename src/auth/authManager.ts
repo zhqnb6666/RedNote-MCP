@@ -58,8 +58,8 @@ export class AuthManager {
     return await this.cookieManager.loadCookies();
   }
 
-  async login(): Promise<void> {
-    logger.info('Starting login process');
+  async login(timeout: number = 60000): Promise<void> {
+    logger.info(`Starting login process with timeout: ${timeout}ms`);
     this.browser = await chromium.launch({headless: false});
     if (!this.browser) {
       logger.error('Failed to launch browser');
@@ -86,7 +86,7 @@ export class AuthManager {
         logger.info('Navigating to explore page');
         await this.page.goto('https://www.xiaohongshu.com/explore', {
           waitUntil: 'domcontentloaded',
-          timeout: 10000
+          timeout: Math.min(10000, timeout / 3) // 不超过timeout的1/3
         });
 
         // Check if already logged in
@@ -108,21 +108,33 @@ export class AuthManager {
 
         logger.info('Waiting for login dialog');
         // Wait for login dialog if not logged in
-        await this.page.waitForSelector('.login-container', {
-          timeout: 10000
-        });
+        try {
+          await this.page.waitForSelector('.login-container', {
+            timeout: Math.min(10000, timeout / 3) // 不超过timeout的1/3
+          });
+        } catch (error: any) {
+          throw new Error(`登录对话框加载超时 (${Math.min(10000, timeout / 3)}ms): ${error.message}`);
+        }
 
         // Wait for QR code image
         logger.info('Waiting for QR code');
-        const qrCodeImage = await this.page.waitForSelector('.qrcode-img', {
-          timeout: 10000
-        });
+        try {
+          const qrCodeImage = await this.page.waitForSelector('.qrcode-img', {
+            timeout: Math.min(10000, timeout / 3) // 不超过timeout的1/3
+          });
+        } catch (error: any) {
+          throw new Error(`二维码加载超时 (${Math.min(10000, timeout / 3)}ms): ${error.message}`);
+        }
 
         // Wait for user to complete login
         logger.info('Waiting for user to complete login');
-        await this.page.waitForSelector('.user.side-bar-component .channel', {
-          timeout: 60000
-        });
+        try {
+          await this.page.waitForSelector('.user.side-bar-component .channel', {
+            timeout: timeout // 允许用户登录的时间较长
+          });
+        } catch (error: any) {
+          throw new Error(`等待用户登录超时 (${timeout}ms): ${error.message}`);
+        }
 
         // Verify the text content
         const isLoggedIn = await this.page.evaluate(() => {
@@ -140,7 +152,7 @@ export class AuthManager {
         const newCookies = await this.context.cookies();
         await this.cookieManager.saveCookies(newCookies);
         return;
-      } catch (error) {
+      } catch (error: any) {
         logger.error(`Login attempt ${retryCount + 1} failed:`, error);
         // Clean up current session
         if (this.page) await this.page.close();
@@ -152,7 +164,7 @@ export class AuthManager {
           await new Promise(resolve => setTimeout(resolve, 2000));
         } else {
           logger.error('Login failed after maximum retries');
-          throw new Error('Login failed after maximum retries');
+          throw new Error(`登录失败，已达到最大重试次数 (${maxRetries}): ${error.message}`);
         }
       }
     }

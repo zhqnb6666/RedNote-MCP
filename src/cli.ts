@@ -39,12 +39,13 @@ server.tool(
   '根据关键词搜索笔记',
   {
     keywords: z.string().describe('搜索关键词'),
-    limit: z.number().optional().describe('返回结果数量限制')
+    limit: z.number().optional().describe('返回结果数量限制'),
+    timeout: z.number().optional().describe('操作超时时间（毫秒），默认为30000毫秒')
   },
-  async ({ keywords, limit = 10 }: { keywords: string; limit?: number }) => {
-    logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}`)
+  async ({ keywords, limit = 10, timeout = 30000 }: { keywords: string; limit?: number; timeout?: number }) => {
+    logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}, timeout: ${timeout}ms`)
     try {
-      const notes = await tools.searchNotes(keywords, limit)
+      const notes = await tools.searchNotes(keywords, limit, timeout)
       logger.info(`Found ${notes.length} notes`)
       return {
         content: notes.map((note) => ({
@@ -63,12 +64,13 @@ server.tool(
   'get_note_content',
   '获取笔记内容',
   {
-    url: z.string().describe('笔记 URL')
+    url: z.string().describe('笔记 URL'),
+    timeout: z.number().optional().describe('操作超时时间（毫秒），默认为30000毫秒')
   },
-  async ({ url }: { url: string }) => {
-    logger.info(`Getting note content for URL: ${url}`)
+  async ({ url, timeout = 30000 }: { url: string; timeout?: number }) => {
+    logger.info(`Getting note content for URL: ${url}, timeout: ${timeout}ms`)
     try {
-      const note = await tools.getNoteContent(url)
+      const note = await tools.getNoteContent(url, timeout)
       logger.info(`Successfully retrieved note: ${note.title}`)
 
       return {
@@ -90,12 +92,13 @@ server.tool(
   'get_note_comments',
   '获取笔记评论',
   {
-    url: z.string().describe('笔记 URL')
+    url: z.string().describe('笔记 URL'),
+    timeout: z.number().optional().describe('操作超时时间（毫秒），默认为30000毫秒')
   },
-  async ({ url }: { url: string }) => {
-    logger.info(`Getting comments for URL: ${url}`)
+  async ({ url, timeout = 30000 }: { url: string; timeout?: number }) => {
+    logger.info(`Getting comments for URL: ${url}, timeout: ${timeout}ms`)
     try {
-      const comments = await tools.getNoteComments(url)
+      const comments = await tools.getNoteComments(url, timeout)
       logger.info(`Found ${comments.length} comments`)
       return {
         content: comments.map((comment) => ({
@@ -111,27 +114,34 @@ server.tool(
 )
 
 // Add login tool
-server.tool('login', '登录小红书账号', {}, async () => {
-  logger.info('Starting login process')
-  const authManager = new AuthManager()
-  try {
-    await authManager.login()
-    logger.info('Login successful')
-    return {
-      content: [
-        {
-          type: 'text',
-          text: '登录成功！Cookie 已保存。'
-        }
-      ]
+server.tool(
+  'login', 
+  '登录小红书账号', 
+  {
+    timeout: z.number().optional().describe('操作超时时间（毫秒），默认为60000毫秒')
+  }, 
+  async ({ timeout = 60000 }: { timeout?: number }) => {
+    logger.info(`Starting login process with timeout: ${timeout}ms`)
+    const authManager = new AuthManager()
+    try {
+      await authManager.login(timeout)
+      logger.info('Login successful')
+      return {
+        content: [
+          {
+            type: 'text',
+            text: '登录成功！Cookie 已保存。'
+          }
+        ]
+      }
+    } catch (error) {
+      logger.error('Login failed:', error)
+      throw error
+    } finally {
+      await authManager.cleanup()
     }
-  } catch (error) {
-    logger.error('Login failed:', error)
-    throw error
-  } finally {
-    await authManager.cleanup()
   }
-})
+)
 
 // Start the server
 async function main() {
