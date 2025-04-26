@@ -33,10 +33,15 @@ export class RedNoteTools {
 
   async initialize(): Promise<void> {
     logger.info('Initializing browser and page')
+    this.browser = await this.authManager.getBrowser()
     if (!this.browser) {
-      this.browser = await this.authManager.getBrowser()
+      throw new Error('Failed to initialize browser')
+    }
+    
+    try {
       this.page = await this.browser.newPage()
-
+      logger.info('Browser page created')
+      
       // Load cookies if available
       const cookies = await this.authManager.getCookies()
       if (cookies.length > 0) {
@@ -58,24 +63,51 @@ export class RedNoteTools {
         throw new Error('Not logged in')
       }
       logger.info('Login status verified')
+    } catch (error) {
+      logger.error('Error during initialization:', error)
+      await this.cleanup()
+      throw error
     }
   }
 
   async cleanup(): Promise<void> {
     logger.info('Cleaning up browser resources')
-    if (this.browser) {
-      await this.browser.close()
-      this.browser = null
+    try {
+      if (this.page) {
+        logger.info('Closing page')
+        await this.page.close().catch(err => logger.error('Error closing page:', err))
+        this.page = null
+      }
+      
+      if (this.browser) {
+        logger.info('Closing browser')
+        await this.browser.close().catch(err => logger.error('Error closing browser:', err))
+        this.browser = null
+      }
+    } catch (error) {
+      logger.error('Error during cleanup:', error)
+    } finally {
       this.page = null
+      this.browser = null
     }
   }
 
   extractRedBookUrl(shareText: string): string {
+    logger.info(`Extracting URL from: ${shareText}`)
+    // 如果输入已经是一个完整的URL，不需要进一步提取
+    if (shareText.startsWith('http://') || shareText.startsWith('https://')) {
+      // 直接检查是否是小红书域名
+      if (shareText.includes('xiaohongshu.com') || shareText.includes('xhslink.com')) {
+        return shareText
+      }
+    }
+
     // 匹配 http://xhslink.com/ 开头的链接
     const xhslinkRegex = /(https?:\/\/xhslink\.com\/[a-zA-Z0-9\/]+)/i
     const xhslinkMatch = shareText.match(xhslinkRegex)
 
     if (xhslinkMatch && xhslinkMatch[1]) {
+      logger.info(`Extracted xhslink URL: ${xhslinkMatch[1]}`)
       return xhslinkMatch[1]
     }
 
@@ -84,18 +116,20 @@ export class RedNoteTools {
     const xiaohongshuMatch = shareText.match(xiaohongshuRegex)
 
     if (xiaohongshuMatch && xiaohongshuMatch[1]) {
+      logger.info(`Extracted xiaohongshu URL: ${xiaohongshuMatch[1]}`)
       return xiaohongshuMatch[1]
     }
 
+    logger.warn(`Could not extract URL from: ${shareText}, using as-is`)
     return shareText
   }
 
   async searchNotes(keywords: string, limit: number = 10): Promise<Note[]> {
     logger.info(`Searching notes with keywords: ${keywords}, limit: ${limit}`)
-    await this.initialize()
-    if (!this.page) throw new Error('Page not initialized')
-
     try {
+      await this.initialize()
+      if (!this.page) throw new Error('Page not initialized')
+
       // Navigate to search page
       logger.info('Navigating to search page')
       await this.page.goto(`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keywords)}`)
@@ -206,6 +240,9 @@ export class RedNoteTools {
 
       logger.info(`Successfully processed ${notes.length} notes`)
       return notes
+    } catch (error) {
+      logger.error('Error searching notes:', error)
+      throw error
     } finally {
       await this.cleanup()
     }
@@ -213,12 +250,12 @@ export class RedNoteTools {
 
   async getNoteContent(url: string): Promise<NoteDetail> {
     logger.info(`Getting note content for URL: ${url}`)
-    await this.initialize()
-    if (!this.page) throw new Error('Page not initialized')
-
     try {
+      await this.initialize()
+      if (!this.page) throw new Error('Page not initialized')
+
       const actualURL = this.extractRedBookUrl(url)
-      await this.page.goto(url)
+      await this.page.goto(actualURL)
       let note = await GetNoteDetail(this.page)
       note.url = url
       logger.info(`Successfully extracted note: ${note.title}`)
@@ -233,10 +270,10 @@ export class RedNoteTools {
 
   async getNoteComments(url: string): Promise<Comment[]> {
     logger.info(`Getting comments for URL: ${url}`)
-    await this.initialize()
-    if (!this.page) throw new Error('Page not initialized')
-
     try {
+      await this.initialize()
+      if (!this.page) throw new Error('Page not initialized')
+
       await this.page.goto(url)
 
       // Wait for comments to load
